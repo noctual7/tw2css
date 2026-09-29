@@ -1,0 +1,64 @@
+{
+  "name": "tw2cssm",
+  "version": "0.1.0",
+  "description": "CLI: заменяет Tailwind-классы в React-проекте на CSS-модули (по одному модулю на компонент)",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "tw2cssm": "bin/tw2cssm.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18.3"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
+    "rebuild": "npm run clean && npm run build",
+    "verify": "npm run typecheck && npm run rebuild",
+    "prepublishOnly": "npm run verify"
+  },
+  "keywords": [
+    "tailwind",
+    "tailwindcss",
+    "css-modules",
+    "react",
+    "codemod",
+    "migration",
+    "cli"
+  ],
+  "dependencies": {
+    "@babel/parser": "^7.25.0",
+    "@babel/traverse": "^7.25.0",
+    "@babel/types": "^7.25.0",
+    "@tailwindcss/node": "^4.0.0",
+    "fast-glob": "^3.3.2",
+    "magic-string": "^0.30.11",
+    "postcss": "^8.4.47",
+    "postcss-selector-parser": "^6.1.2"
+  },
+  "peerDependencies": {
+    "tailwindcss": ">=3.3.0"
+  },
+  "devDependencies": {
+    "@types/babel__traverse": "^7.28.0",
+    "@types/node": "^26.6.3",
+    "typescript": "^7.0.2"
+  }
+}
