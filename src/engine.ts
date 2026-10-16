@@ -12,7 +12,6 @@ export interface Engine {
   globals: Root;
   preflight: Root | null;
   keyframes: Map<string, AtRule>;
-  keyframesGlobal: boolean;
 }
 
 interface Tailwind {
@@ -105,7 +104,7 @@ async function genV3(tokens: string[], opts: RunOptions, tw: Tailwind): Promise<
       if (!(n.type === 'rule' && isDefaultsRule(n))) preflight!.append(n.clone());
     });
   }
-  return { major: 3, utilities, globals, preflight, keyframes, keyframesGlobal: false };
+  return { major: 3, utilities, globals, preflight, keyframes };
 }
 
 function detectV4Css(cwd: string, explicit?: string): string | null {
@@ -143,6 +142,7 @@ async function genV4(tokens: string[], opts: RunOptions, tw: Tailwind): Promise<
   const utilities = postcss.root();
   const globals = postcss.root();
   const preflight = postcss.root();
+  const keyframes = new Map<string, AtRule>();
   root.each((n) => {
     if (n.type !== 'atrule') return;
     if (n.name === 'layer') {
@@ -154,15 +154,18 @@ async function genV4(tokens: string[], opts: RunOptions, tw: Tailwind): Promise<
       else if (n.params === 'base') {
         if (opts.preflight) preflight.append(n.clone({ params: 'base' }));
       } else if (n.params === 'theme' || n.params === 'properties') globals.append(n.clone());
-    } else if (n.name === 'property' || /keyframes$/.test(n.name)) globals.append(n.clone());
+    } else if (n.name === 'property') globals.append(n.clone());
+  });
+  // @keyframes могут лежать и внутри @layer — забираем их на уровне модулей
+  root.walkAtRules((n) => {
+    if (/keyframes$/.test(n.name)) keyframes.set(n.params, n.clone());
   });
   return {
     major: 4,
     utilities,
     globals,
     preflight: opts.preflight ? preflight : null,
-    keyframes: new Map(),
-    keyframesGlobal: true,
+    keyframes,
   };
 }
 

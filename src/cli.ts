@@ -13,9 +13,9 @@ const HELP = `tw2cssm — замена Tailwind на CSS-модули в React-�
   --dry-run          ничего не записывать; с --verbose печатает результат
   --config <файл>    tailwind.config.* (Tailwind v3)
   --css <файл>       главный CSS с @import "tailwindcss" и @theme (Tailwind v4)
-  --globals <файл>   куда записать глобальные стили Tailwind (по умолчанию src/tailwind-globals.css)
-  --entry <файл>     точка входа, куда добавить импорт глобальных стилей
-  --preflight        сохранить Tailwind preflight (CSS-reset) в глобальных стилях
+  --globals <файл>   куда записать preflight (по умолчанию src/tailwind-preflight.css)
+  --entry <файл>     точка входа, куда добавить импорт preflight
+  --preflight        сохранить Tailwind preflight (CSS-reset) в отдельный файл
   --ignore <glob>    доп. исключения (можно несколько раз)
   --force            перезаписать существующие *.module.css
   --verbose          подробный вывод

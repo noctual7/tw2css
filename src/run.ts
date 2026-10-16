@@ -64,7 +64,6 @@ export async function run(opts: RunOptions): Promise<void> {
 
   // Фаза 3: переписываем файлы и создаём модули
   const writes: Write[] = [];
-  let needGlobals = !!engine.preflight;
   let changedFiles = 0;
   let modules = 0;
 
@@ -109,7 +108,6 @@ export async function run(opts: RunOptions): Promise<void> {
         skip = true;
       }
       const css = fmtRoot(buildModuleCss(b.groups(), index, engine));
-      if (/var\(--/.test(css)) needGlobals = true;
       cssFiles.push({ path: cssPath, text: `${MARK}\n\n${css}` });
     }
     if (skip) continue;
@@ -129,17 +127,17 @@ export async function run(opts: RunOptions): Promise<void> {
     log(`  ✔ ${relFile} → ${cssFiles.map((c) => path.basename(c.path)).join(', ')}`);
   }
 
-  // Глобальные стили (переменные темы, @property, @keyframes, preflight)
-  if (needGlobals && changedFiles) {
+  // Preflight (CSS-reset) — единственное, что остаётся вне модулей, и только с --preflight
+  const preflightParts: string[] = [];
+  if (changedFiles && engine.preflight && engine.preflight.nodes.length)
+    preflightParts.push(fmtRoot(engine.preflight));
+  if (preflightParts.length) {
     const gpath = path.resolve(
       cwd,
-      opts.globals || path.join(fs.existsSync(path.join(cwd, 'src')) ? 'src' : '.', 'tailwind-globals.css'),
+      opts.globals || path.join(fs.existsSync(path.join(cwd, 'src')) ? 'src' : '.', 'tailwind-preflight.css'),
     );
-    const parts: string[] = [];
-    if (engine.preflight && engine.preflight.nodes.length) parts.push(fmtRoot(engine.preflight));
-    if (engine.globals.nodes.length) parts.push(fmtRoot(engine.globals));
-    writes.push({ path: gpath, text: `${MARK}\n\n${parts.join('\n')}` });
-    log(`  ✔ ${rel(cwd, gpath)} (глобальные переменные Tailwind)`);
+    writes.push({ path: gpath, text: `${MARK}\n\n${preflightParts.join('\n')}` });
+    log(`  ✔ ${rel(cwd, gpath)} (preflight Tailwind)`);
     const entry = opts.entry
       ? path.resolve(cwd, opts.entry)
       : fg.sync(['{src/,}{main,index}.{tsx,jsx,ts,js}', '{src/,}app/layout.{tsx,jsx,js}', '{src/,}pages/_app.{tsx,jsx,js}'], {

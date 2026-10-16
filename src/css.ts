@@ -161,7 +161,12 @@ export function buildModuleCss(groups: BucketClass[][], index: RuleIndex, engine
       out.append(c);
     });
   });
-  if (!engine.keyframesGlobal) {
+  const vars = collectVars(engine);
+  inlineVars(out, vars);
+  dropDuplicateDecls(out);
+  dropUnusedCustomProps(out);
+  pruneEmpty(out);
+  if (engine.keyframes.size) {
     const used = new Set<string>();
     out.walkDecls(/^animation(-name)?$/, (d) => {
       for (const name of engine.keyframes.keys())
@@ -170,6 +175,144 @@ export function buildModuleCss(groups: BucketClass[][], index: RuleIndex, engine
     for (const name of used) out.append(engine.keyframes.get(name)!.clone());
   }
   return out;
+}
+
+/** Значения CSS-переменных Tailwind (тема, `--tw-*`, `@property`): имя → значение */
+export function collectVars(engine: Engine): Map<string, string> {
+  const vars = new Map<string, string>();
+  engine.globals.walkDecls((d) => {
+    if (!d.prop.startsWith('--')) return;
+    const v = d.value.trim();
+    // `initial` превращает переменную в guaranteed-invalid, поэтому срабатывает fallback
+    if (v === 'initial') return;
+    vars.set(d.prop, v);
+  });
+  return vars;
+}
+
+function splitVar(inner: string): [string, string | null] {
+  let depth = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (ch === ',' && depth === 0) return [inner.slice(0, i), inner.slice(i + 1)];
+  }
+  return [inner, null];
+}
+
+function findVars(value: string): { start: number; end: number; inner: string }[] {
+  const out: { start: number; end: number; inner: string }[] = [];
+  let i = 0;
+  for (;;) {
+    const j = value.indexOf('var(', i);
+    if (j < 0) break;
+    let depth = 0;
+    let k = j + 3;
+    for (; k < value.length; k++) {
+      if (value[k] === '(') depth++;
+      else if (value[k] === ')') {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    if (k >= value.length) break;
+    out.push({ start: j, end: k + 1, inner: value.slice(j + 4, k) });
+    i = k + 1;
+  }
+  return out;
+}
+
+function resolveValue(
+  value: string,
+  locals: Map<string, string>,
+  globals: Map<string, string>,
+  stack: Set<string>,
+): string {
+  const vars = findVars(value);
+  if (!vars.length) return value;
+  let out = '';
+  let pos = 0;
+  for (const v of vars) {
+    out += value.slice(pos, v.start);
+    const [nameRaw, fb] = splitVar(v.inner);
+    const name = nameRaw.trim();
+    let replacement: string | null = null;
+    if (stack.has(name)) {
+      if (fb !== null) replacement = resolveValue(fb, locals, globals, stack);
+    } else {
+      const defined = locals.has(name) ? locals.get(name) : globals.get(name);
+      if (defined !== undefined) {
+        stack.add(name);
+        replacement = resolveValue(defined, locals, globals, stack);
+        stack.delete(name);
+      } else if (fb !== null) {
+        stack.add(name);
+        replacement = resolveValue(fb, locals, globals, stack);
+        stack.delete(name);
+      }
+    }
+    out += replacement === null ? value.slice(v.start, v.end) : replacement;
+    pos = v.end;
+  }
+  return (out + value.slice(pos)).replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+/** Подставляет значения переменных прямо в правила (переменные в итоговом CSS не остаются) */
+export function inlineVars(root: Root, globals: Map<string, string>): void {
+  root.walkRules((rule) => {
+    if (rule.parent && rule.parent.type === 'atrule' && /keyframes$/.test(rule.parent.name)) return;
+    const locals = new Map<string, string>();
+    rule.walkDecls(/^--/, (d) => {
+      const v = d.value.trim();
+      if (v !== 'initial') locals.set(d.prop, v);
+    });
+    if (!locals.size && !globals.size) return;
+    rule.walkDecls((d) => {
+      const loc = d.prop.startsWith('--') ? new Map(locals) : locals;
+      if (d.prop.startsWith('--')) loc.delete(d.prop);
+      const next = resolveValue(d.value, loc, globals, new Set());
+      if (next !== d.value) d.value = next;
+    });
+  });
+}
+
+/** Убирает одинаковые пары свойство/значение, оставляя последнее объявление */
+export function dropDuplicateDecls(root: Root): void {
+  root.walkRules((rule) => {
+    const decls: Declaration[] = [];
+    rule.each((n) => {
+      if (n.type === 'decl') decls.push(n);
+    });
+    decls.forEach((d, i) => {
+      if (decls.slice(i + 1).some((x) => x.prop === d.prop && x.value === d.value)) d.remove();
+    });
+  });
+}
+
+/** Удаляет правила и @-правила, оставшиеся без объявлений после подстановки переменных */
+export function pruneEmpty(root: Root): void {
+  const clean = (container: Container): void => {
+    container.each((n) => {
+      if (n.type === 'atrule' && n.nodes) {
+        clean(n);
+        if (!n.nodes.length) n.remove();
+      } else if (n.type === 'rule' && (!n.nodes || !n.nodes.length)) n.remove();
+    });
+  };
+  clean(root);
+}
+
+/** Убирает объявления `--x: …`, на которые больше не ссылается ни один `var()` */
+export function dropUnusedCustomProps(root: Root): void {
+  const used = new Set<string>();
+  root.walkDecls((d) => {
+    if (!d.value) return;
+    for (const v of findVars(d.value)) used.add(splitVar(v.inner)[0].trim());
+  });
+  root.walkDecls(/^--/, (d) => {
+    if (!used.has(d.prop)) d.remove();
+  });
 }
 
 function fmt(node: ChildNode, ind = ''): string {

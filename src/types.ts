@@ -9,11 +9,11 @@ export interface RunOptions {
   config?: string;
   /** путь к главному CSS с @import "tailwindcss" (Tailwind v4) */
   css?: string;
-  /** путь к файлу глобальных стилей Tailwind */
+  /** путь к файлу preflight, если включён */
   globals?: string;
-  /** точка входа, куда добавить импорт глобальных стилей */
+  /** точка входа, куда добавить импорт preflight */
   entry?: string;
-  /** сохранить Tailwind preflight (reset) */
+  /** сохранить Tailwind preflight (reset) отдельным файлом */
   preflight: boolean;
   /** дополнительные glob-исключения */
   ignore: string[];
